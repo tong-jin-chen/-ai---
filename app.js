@@ -135,7 +135,7 @@ function renderList() {
     const empty = document.createElement("div");
     empty.className = "item";
     empty.style.cursor = "default";
-    empty.innerHTML = `<div class="item-name">暂无模型</div><div class="item-meta">可本地上传 STL 预览；要发布到社区请通过提交模型入口</div>`;
+    empty.innerHTML = `<div class="item-name">暂无模型</div><div class="item-meta">你可以本地上传 STL 预览；要发布到社区请点右上角“提交模型”</div>`;
     listEl.appendChild(empty);
     return;
   }
@@ -175,14 +175,18 @@ async function bootstrap() {
   if (data.repoUrl) repoLinkEl.href = data.repoUrl;
   if (data.submitUrl) submitLinkEl.href = data.submitUrl;
 
-  state.models = Array.isArray(data.models) ? data.models.map((m, idx) => ({
-    id: m.id || `m_${idx}`,
-    name: m.name,
-    author: m.author,
-    date: m.date,
-    url: m.url,
-    format: (m.format || "stl").toLowerCase()
-  })).filter((m) => m.url && m.format === "stl") : [];
+  state.models = Array.isArray(data.models)
+    ? data.models
+        .map((m, idx) => ({
+          id: m.id || `m_${idx}`,
+          name: m.name,
+          author: m.author,
+          date: m.date,
+          url: m.url,
+          format: (m.format || "stl").toLowerCase()
+        }))
+        .filter((m) => m.url && m.format === "stl")
+    : [];
 
   setSelectedMeta(null);
   renderList();
