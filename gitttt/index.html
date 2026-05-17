@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>万物共形 · 模型共享社区</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <header class="header">
+      <div class="brand">
+        <div class="logo"></div>
+        <div class="brand-text">
+          <div class="brand-title">万物共形</div>
+          <div class="brand-subtitle">模型共享社区</div>
+        </div>
+      </div>
+      <div class="header-actions">
+        <a class="btn secondary" id="repoLink" href="#" target="_blank" rel="noreferrer">仓库</a>
+        <a class="btn" id="submitLink" href="#" target="_blank" rel="noreferrer">提交模型</a>
+      </div>
+    </header>
+
+    <main class="layout">
+      <section class="panel">
+        <div class="panel-title">社区模型</div>
+        <div class="panel-subtitle">点击列表即可预览与下载</div>
+        <div class="search">
+          <input id="q" class="input" placeholder="搜索模型名称 / 作者" autocomplete="off" />
+        </div>
+        <div id="list" class="list" role="list"></div>
+      </section>
+
+      <section class="viewer">
+        <div class="viewer-top">
+          <div class="viewer-title">
+            <div id="modelName" class="viewer-name">选择一个模型或上传 STL 文件</div>
+            <div id="modelMeta" class="viewer-meta"></div>
+          </div>
+          <div class="viewer-actions">
+            <label class="btn secondary file-btn">
+              本地上传 STL 预览
+              <input id="file" type="file" accept=".stl" />
+            </label>
+            <a class="btn" id="download" href="#" target="_blank" rel="noreferrer" aria-disabled="true">下载</a>
+          </div>
+        </div>
+        <div class="canvas-wrap">
+          <canvas id="c"></canvas>
+          <div id="hint" class="hint">拖动旋转，滚轮缩放，右键平移</div>
+        </div>
+      </section>
+    </main>
+
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>
