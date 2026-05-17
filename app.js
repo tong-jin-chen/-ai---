@@ -44,6 +44,56 @@ scene.add(grid);
 
 let currentMesh = null;
 
+function inferGithubRepoUrls() {
+  const host = String(window.location.hostname || "");
+  if (!host.endsWith("github.io")) return null;
+  const user = host.split(".")[0];
+  const parts = String(window.location.pathname || "").split("/").filter(Boolean);
+  if (parts.length === 0) return null;
+  const repo = parts[0];
+  return {
+    repoUrl: `https://github.com/${encodeURIComponent(user)}/${encodeURIComponent(repo)}`,
+    submitUrl: `https://github.com/${encodeURIComponent(user)}/${encodeURIComponent(repo)}/issues/new?title=%E6%A8%A1%E5%9E%8B%E6%8F%90%E4%BA%A4%EF%BC%9A%3C%E8%AF%B7%E5%A1%AB%E6%A8%A1%E5%9E%8B%E5%90%8D%E7%A7%B0%3E&body=%E8%AF%B7%E6%8C%89%E4%B8%8B%E9%9D%A2%E6%A8%A1%E6%9D%BF%E5%A1%AB%E5%86%99%EF%BC%8C%E5%B9%B6%E6%8A%8A%20STL%20%E6%96%87%E4%BB%B6%E6%8B%96%E6%8B%BD%E5%88%B0%E8%AF%A5%20Issue%20%E4%B8%AD%E4%B8%8A%E4%BC%A0%E3%80%82%0A%0A-%20%E6%A8%A1%E5%9E%8B%E5%90%8D%E7%A7%B0%EF%BC%9A%0A-%20%E4%BD%9C%E8%80%85%E6%98%B5%E7%A7%B0%EF%BC%9A%0A-%20%E6%A8%A1%E5%9E%8B%E6%8F%8F%E8%BF%B0%EF%BC%9A%0A`
+  };
+}
+
+function setHeaderLinks(data) {
+  let repoUrl = data?.repoUrl;
+  let submitUrl = data?.submitUrl;
+
+  const isPlaceholder =
+    !repoUrl ||
+    !submitUrl ||
+    repoUrl.includes("yourname/yourrepo") ||
+    submitUrl.includes("yourname/yourrepo") ||
+    repoUrl === "#" ||
+    submitUrl === "#";
+
+  if (isPlaceholder) {
+    const inferred = inferGithubRepoUrls();
+    if (inferred) {
+      repoUrl = inferred.repoUrl;
+      submitUrl = inferred.submitUrl;
+    }
+  }
+
+  if (repoUrl && repoUrl !== "#") {
+    repoLinkEl.href = repoUrl;
+    repoLinkEl.removeAttribute("aria-disabled");
+  } else {
+    repoLinkEl.href = "#";
+    repoLinkEl.setAttribute("aria-disabled", "true");
+  }
+
+  if (submitUrl && submitUrl !== "#") {
+    submitLinkEl.href = submitUrl;
+    submitLinkEl.removeAttribute("aria-disabled");
+  } else {
+    submitLinkEl.href = "#";
+    submitLinkEl.setAttribute("aria-disabled", "true");
+  }
+}
+
 function setDownload(url, enabled) {
   if (!enabled) {
     downloadEl.href = "#";
@@ -122,6 +172,25 @@ async function loadStlFromUrl(url) {
   });
 }
 
+async function loadStlFromFile(file) {
+  const loader = new STLLoader();
+  clearMesh();
+
+  const buffer = await file.arrayBuffer();
+  const geometry = loader.parse(buffer);
+  geometry.computeVertexNormals();
+  const material = new THREE.MeshStandardMaterial({
+    color: 0xd9f3f3,
+    metalness: 0.05,
+    roughness: 0.65
+  });
+  const mesh = new THREE.Mesh(geometry, material);
+  mesh.rotation.x = -Math.PI / 2;
+  currentMesh = mesh;
+  scene.add(mesh);
+  frameObject(mesh);
+}
+
 function renderList() {
   const q = (qEl.value || "").trim().toLowerCase();
   const filtered = state.models.filter((m) => {
@@ -172,8 +241,7 @@ async function bootstrap() {
   const res = await fetch("./models.json", { cache: "no-store" });
   const data = await res.json();
 
-  if (data.repoUrl) repoLinkEl.href = data.repoUrl;
-  if (data.submitUrl) submitLinkEl.href = data.submitUrl;
+  setHeaderLinks(data);
 
   state.models = Array.isArray(data.models)
     ? data.models
@@ -211,19 +279,23 @@ qEl.addEventListener("input", renderList);
 fileEl.addEventListener("change", async (e) => {
   const file = e.target.files && e.target.files[0];
   if (!file) return;
-  const url = URL.createObjectURL(file);
   state.activeId = null;
   renderList();
   setSelectedMeta({
     name: file.name,
     author: "本地文件",
     date: "",
-    url,
+    url: "",
     format: "stl"
   });
   try {
-    await loadStlFromUrl(url);
-    setDownload(url, true);
+    nameEl.textContent = "正在加载本地模型…";
+    metaEl.textContent = "";
+    setDownload("", false);
+    await loadStlFromFile(file);
+    nameEl.textContent = file.name;
+    metaEl.textContent = "来源：本地文件";
+    setDownload("", false);
   } catch (err) {
     clearMesh();
     nameEl.textContent = "加载失败";
