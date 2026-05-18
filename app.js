@@ -1,6 +1,4 @@
-import * as THREE from "three";
-import { OrbitControls } from "three/addons/controls/OrbitControls.js";
-import { STLLoader } from "three/addons/loaders/STLLoader.js";
+;(async function () {
 
 const $ = (id) => document.getElementById(id);
 
@@ -39,6 +37,11 @@ let controls = null;
 let threeReady = false;
 
 try {
+  const THREE = globalThis.THREE;
+  if (!THREE) throw new Error("three.js 未加载（THREE 不存在）");
+  if (!THREE.OrbitControls) throw new Error("OrbitControls 未加载");
+  if (!THREE.STLLoader) throw new Error("STLLoader 未加载");
+
   renderer = new THREE.WebGLRenderer({ canvas: $("c"), antialias: true, alpha: true });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
 
@@ -48,7 +51,7 @@ try {
   camera = new THREE.PerspectiveCamera(45, 1, 0.01, 200);
   camera.position.set(6, 4, 8);
 
-  controls = new OrbitControls(camera, renderer.domElement);
+  controls = new THREE.OrbitControls(camera, renderer.domElement);
   controls.enableDamping = true;
   controls.dampingFactor = 0.08;
   controls.target.set(0, 0, 0);
@@ -91,8 +94,8 @@ function setHeaderLinks(data) {
   const isPlaceholder =
     !repoUrl ||
     !submitUrl ||
-    repoUrl.includes("-ai---") ||
-    submitUrl.includes("-ai---") ||
+    repoUrl.includes("yourname/yourrepo") ||
+    submitUrl.includes("yourname/yourrepo") ||
     repoUrl === "#" ||
     submitUrl === "#";
 
@@ -176,7 +179,7 @@ function frameObject(obj) {
 
 async function loadStlFromUrl(url) {
   if (!threeReady || !scene) throw new Error("3D 预览引擎未就绪");
-  const loader = new STLLoader();
+  const loader = new globalThis.THREE.STLLoader();
   clearMesh();
 
   return new Promise((resolve, reject) => {
@@ -204,7 +207,7 @@ async function loadStlFromUrl(url) {
 
 async function loadStlFromFile(file) {
   if (!threeReady || !scene) throw new Error("3D 预览引擎未就绪");
-  const loader = new STLLoader();
+  const loader = new globalThis.THREE.STLLoader();
   clearMesh();
 
   const buffer = await readFileAsArrayBuffer(file);
@@ -363,3 +366,4 @@ window.addEventListener("resize", resize);
 await bootstrap();
 resize();
 if (threeReady) tick();
+})();
