@@ -64,40 +64,52 @@ async function loadThreeTooling() {
   throw lastError || new Error("无法加载 three.js 依赖");
 }
 
-const tooling = await loadThreeTooling().catch((e) => {
-  setFatalHint(`3D 预览依赖加载失败：${String(e?.message || e)}。请检查网络是否能访问 jsdelivr/unpkg。`);
-  throw e;
-});
+setHint("正在加载 3D 预览引擎…");
 
-const THREE = tooling.THREE;
-const OrbitControls = tooling.OrbitControls;
-const STLLoader = tooling.STLLoader;
+let THREE = null;
+let OrbitControls = null;
+let STLLoader = null;
+let renderer = null;
+let scene = null;
+let camera = null;
+let controls = null;
+let threeReady = false;
 
-setHint("拖动旋转，滚轮缩放，右键平移");
+try {
+  const tooling = await loadThreeTooling();
+  THREE = tooling.THREE;
+  OrbitControls = tooling.OrbitControls;
+  STLLoader = tooling.STLLoader;
 
-const renderer = new THREE.WebGLRenderer({ canvas: $("c"), antialias: true, alpha: true });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  renderer = new THREE.WebGLRenderer({ canvas: $("c"), antialias: true, alpha: true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
 
-const scene = new THREE.Scene();
-scene.fog = new THREE.Fog(0x0b0f14, 8, 35);
+  scene = new THREE.Scene();
+  scene.fog = new THREE.Fog(0x0b0f14, 8, 35);
 
-const camera = new THREE.PerspectiveCamera(45, 1, 0.01, 200);
-camera.position.set(6, 4, 8);
+  camera = new THREE.PerspectiveCamera(45, 1, 0.01, 200);
+  camera.position.set(6, 4, 8);
 
-const controls = new OrbitControls(camera, renderer.domElement);
-controls.enableDamping = true;
-controls.dampingFactor = 0.08;
-controls.target.set(0, 0, 0);
+  controls = new OrbitControls(camera, renderer.domElement);
+  controls.enableDamping = true;
+  controls.dampingFactor = 0.08;
+  controls.target.set(0, 0, 0);
 
-scene.add(new THREE.AmbientLight(0xffffff, 0.65));
-const dir = new THREE.DirectionalLight(0xffffff, 1.1);
-dir.position.set(6, 10, 6);
-scene.add(dir);
+  scene.add(new THREE.AmbientLight(0xffffff, 0.65));
+  const dir = new THREE.DirectionalLight(0xffffff, 1.1);
+  dir.position.set(6, 10, 6);
+  scene.add(dir);
 
-const grid = new THREE.GridHelper(12, 12, 0x2a3542, 0x1f2832);
-grid.material.opacity = 0.25;
-grid.material.transparent = true;
-scene.add(grid);
+  const grid = new THREE.GridHelper(12, 12, 0x2a3542, 0x1f2832);
+  grid.material.opacity = 0.25;
+  grid.material.transparent = true;
+  scene.add(grid);
+
+  threeReady = true;
+  setHint("拖动旋转，滚轮缩放，右键平移");
+} catch (e) {
+  setFatalHint(`3D 预览依赖加载失败：${String(e?.message || e)}。请换网络或使用能访问 jsdelivr/unpkg 的网络环境。`);
+}
 
 let currentMesh = null;
 
@@ -178,6 +190,7 @@ function setSelectedMeta(model) {
 }
 
 function clearMesh() {
+  if (!threeReady || !scene) return;
   if (!currentMesh) return;
   scene.remove(currentMesh);
   currentMesh.geometry.dispose();
@@ -186,6 +199,7 @@ function clearMesh() {
 }
 
 function frameObject(obj) {
+  if (!threeReady || !controls || !camera) return;
   const box = new THREE.Box3().setFromObject(obj);
   const size = box.getSize(new THREE.Vector3());
   const center = box.getCenter(new THREE.Vector3());
@@ -203,6 +217,7 @@ function frameObject(obj) {
 }
 
 async function loadStlFromUrl(url) {
+  if (!threeReady || !scene) throw new Error("3D 预览引擎未就绪");
   const loader = new STLLoader();
   clearMesh();
 
@@ -230,11 +245,18 @@ async function loadStlFromUrl(url) {
 }
 
 async function loadStlFromFile(file) {
+  if (!threeReady || !scene) throw new Error("3D 预览引擎未就绪");
   const loader = new STLLoader();
   clearMesh();
 
-  const buffer = await file.arrayBuffer();
-  const geometry = loader.parse(buffer);
+  const buffer = await readFileAsArrayBuffer(file);
+  let geometry;
+  try {
+    geometry = loader.parse(buffer);
+  } catch (e) {
+    const text = new TextDecoder("utf-8").decode(new Uint8Array(buffer));
+    geometry = loader.parse(text);
+  }
   geometry.computeVertexNormals();
   const material = new THREE.MeshStandardMaterial({
     color: 0xd9f3f3,
@@ -246,6 +268,18 @@ async function loadStlFromFile(file) {
   currentMesh = mesh;
   scene.add(mesh);
   frameObject(mesh);
+}
+
+function readFileAsArrayBuffer(file) {
+  if (typeof file.arrayBuffer === "function") {
+    return file.arrayBuffer();
+  }
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(reader.error || new Error("读取文件失败"));
+    reader.onload = () => resolve(reader.result);
+    reader.readAsArrayBuffer(file);
+  });
 }
 
 function renderList() {
@@ -282,6 +316,7 @@ function renderList() {
       renderList();
       setSelectedMeta(m);
       try {
+        if (!threeReady) throw new Error("3D 预览引擎未就绪（依赖加载失败）");
         await loadStlFromUrl(m.url);
       } catch (e) {
         clearMesh();
@@ -318,6 +353,7 @@ async function bootstrap() {
 }
 
 function resize() {
+  if (!threeReady || !renderer || !camera) return;
   const rect = renderer.domElement.getBoundingClientRect();
   const w = Math.max(1, Math.floor(rect.width));
   const h = Math.max(1, Math.floor(rect.height));
@@ -327,6 +363,7 @@ function resize() {
 }
 
 function tick() {
+  if (!threeReady || !renderer || !camera || !controls) return;
   controls.update();
   renderer.render(scene, camera);
   requestAnimationFrame(tick);
@@ -336,6 +373,7 @@ qEl.addEventListener("input", renderList);
 fileEl.addEventListener("change", async (e) => {
   const file = e.target.files && e.target.files[0];
   if (!file) return;
+  e.target.value = "";
   state.activeId = null;
   renderList();
   setSelectedMeta({
@@ -346,8 +384,9 @@ fileEl.addEventListener("change", async (e) => {
     format: "stl"
   });
   try {
+    if (!threeReady) throw new Error("3D 预览引擎未就绪（依赖加载失败）");
     nameEl.textContent = "正在加载本地模型…";
-    metaEl.textContent = "";
+    metaEl.textContent = `大小：${Math.round((file.size / 1024 / 1024) * 10) / 10}MB`;
     setDownload("", false);
     await loadStlFromFile(file);
     nameEl.textContent = file.name;
@@ -365,4 +404,4 @@ window.addEventListener("resize", resize);
 
 await bootstrap();
 resize();
-tick();
+if (threeReady) tick();
