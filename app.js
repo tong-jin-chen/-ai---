@@ -1,6 +1,80 @@
 ;(async function () {
+const CDN_SETS = [
+  {
+    name: "jsdelivr",
+    three: "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js",
+    orbit: "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/js/controls/OrbitControls.js",
+    stl: "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/js/loaders/STLLoader.js"
+  },
+  {
+    name: "unpkg",
+    three: "https://unpkg.com/three@0.160.0/build/three.min.js",
+    orbit: "https://unpkg.com/three@0.160.0/examples/js/controls/OrbitControls.js",
+    stl: "https://unpkg.com/three@0.160.0/examples/js/loaders/STLLoader.js"
+  }
+];
 
-const $ = (id) => document.getElementById(id);
+function loadScript(url) {
+  return new Promise((resolve, reject) => {
+    const s = document.createElement("script");
+    s.src = url;
+    s.async = true;
+    s.onload = () => resolve();
+    s.onerror = () => reject(new Error(`脚本加载失败：${url}`));
+    document.head.appendChild(s);
+  });
+}
+
+async function ensureThreeDeps() {
+  const errors = [];
+
+  if (!globalThis.THREE) {
+    for (const set of CDN_SETS) {
+      try {
+        await loadScript(set.three);
+        if (globalThis.THREE) break;
+      } catch (e) {
+        errors.push(String(e?.message || e));
+      }
+    }
+  }
+
+  if (!globalThis.THREE) {
+    throw new Error(`three.js 未加载。${errors.length ? `\n${errors.join("\n")}` : ""}`);
+  }
+
+  if (!globalThis.THREE.OrbitControls) {
+    for (const set of CDN_SETS) {
+      try {
+        await loadScript(set.orbit);
+        if (globalThis.THREE.OrbitControls) break;
+      } catch (e) {
+        errors.push(String(e?.message || e));
+      }
+    }
+  }
+
+  if (!globalThis.THREE.OrbitControls) {
+    throw new Error(`OrbitControls 未加载。${errors.length ? `\n${errors.join("\n")}` : ""}`);
+  }
+
+  if (!globalThis.THREE.STLLoader) {
+    for (const set of CDN_SETS) {
+      try {
+        await loadScript(set.stl);
+        if (globalThis.THREE.STLLoader) break;
+      } catch (e) {
+        errors.push(String(e?.message || e));
+      }
+    }
+  }
+
+  if (!globalThis.THREE.STLLoader) {
+    throw new Error(`STLLoader 未加载。${errors.length ? `\n${errors.join("\n")}` : ""}`);
+  }
+}
+
+
 
 const listEl = $("list");
 const qEl = $("q");
@@ -37,10 +111,9 @@ let controls = null;
 let threeReady = false;
 
 try {
+  setHint("正在加载 3D 预览引擎…");
+  await ensureThreeDeps();
   const THREE = globalThis.THREE;
-  if (!THREE) throw new Error("three.js 未加载（THREE 不存在）");
-  if (!THREE.OrbitControls) throw new Error("OrbitControls 未加载");
-  if (!THREE.STLLoader) throw new Error("STLLoader 未加载");
 
   renderer = new THREE.WebGLRenderer({ canvas: $("c"), antialias: true, alpha: true });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
