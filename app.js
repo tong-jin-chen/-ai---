@@ -1,6 +1,17 @@
-import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js";
-import { OrbitControls } from "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/controls/OrbitControls.js";
-import { STLLoader } from "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/loaders/STLLoader.js";
+const CDN_CANDIDATES = [
+  {
+    name: "jsdelivr",
+    three: "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    orbit: "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/controls/OrbitControls.js",
+    stl: "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/loaders/STLLoader.js"
+  },
+  {
+    name: "unpkg",
+    three: "https://unpkg.com/three@0.160.0/build/three.module.js",
+    orbit: "https://unpkg.com/three@0.160.0/examples/jsm/controls/OrbitControls.js",
+    stl: "https://unpkg.com/three@0.160.0/examples/jsm/loaders/STLLoader.js"
+  }
+];
 
 const $ = (id) => document.getElementById(id);
 
@@ -12,11 +23,57 @@ const metaEl = $("modelMeta");
 const downloadEl = $("download");
 const repoLinkEl = $("repoLink");
 const submitLinkEl = $("submitLink");
+const hintEl = $("hint");
 
 const state = {
   models: [],
   activeId: null
 };
+
+function setHint(text) {
+  if (!hintEl) return;
+  hintEl.textContent = text || "";
+}
+
+function setFatalHint(text) {
+  setHint(text);
+  if (hintEl) {
+    hintEl.style.borderColor = "rgba(255, 138, 138, 0.55)";
+    hintEl.style.background = "rgba(255, 138, 138, 0.12)";
+    hintEl.style.color = "rgba(255, 220, 220, 0.95)";
+  }
+}
+
+async function loadThreeTooling() {
+  let lastError = null;
+  for (const c of CDN_CANDIDATES) {
+    try {
+      const threeMod = await import(c.three);
+      const orbitMod = await import(c.orbit);
+      const stlMod = await import(c.stl);
+      return {
+        cdnName: c.name,
+        THREE: threeMod,
+        OrbitControls: orbitMod.OrbitControls,
+        STLLoader: stlMod.STLLoader
+      };
+    } catch (e) {
+      lastError = e;
+    }
+  }
+  throw lastError || new Error("无法加载 three.js 依赖");
+}
+
+const tooling = await loadThreeTooling().catch((e) => {
+  setFatalHint(`3D 预览依赖加载失败：${String(e?.message || e)}。请检查网络是否能访问 jsdelivr/unpkg。`);
+  throw e;
+});
+
+const THREE = tooling.THREE;
+const OrbitControls = tooling.OrbitControls;
+const STLLoader = tooling.STLLoader;
+
+setHint("拖动旋转，滚轮缩放，右键平移");
 
 const renderer = new THREE.WebGLRenderer({ canvas: $("c"), antialias: true, alpha: true });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
