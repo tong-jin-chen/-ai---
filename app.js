@@ -64,8 +64,8 @@ function setHeaderLinks(data) {
   const isPlaceholder =
     !repoUrl ||
     !submitUrl ||
-    repoUrl.includes("yourname/yourrepo") ||
-    submitUrl.includes("yourname/yourrepo") ||
+    repoUrl.includes("-ai---") ||
+    submitUrl.includes("-ai---") ||
     repoUrl === "#" ||
     submitUrl === "#";
 
