@@ -1,16 +1,29 @@
 ;(async function () {
-const CDN_SETS = [
+const $ = (id) => document.getElementById(id);
+
+const THREE_CDN_SETS = [
   {
     name: "jsdelivr",
-    three: "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js",
-    orbit: "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/js/controls/OrbitControls.js",
-    stl: "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/js/loaders/STLLoader.js"
+    three: "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"
   },
   {
     name: "unpkg",
-    three: "https://unpkg.com/three@0.160.0/build/three.min.js",
-    orbit: "https://unpkg.com/three@0.160.0/examples/js/controls/OrbitControls.js",
-    stl: "https://unpkg.com/three@0.160.0/examples/js/loaders/STLLoader.js"
+    three: "https://unpkg.com/three@0.160.0/build/three.min.js"
+  },
+  {
+    name: "cdnjs",
+    three: "https://cdnjs.cloudflare.com/ajax/libs/three.js/r160/three.min.js"
+  }
+];
+
+const MODEL_VIEWER_CDN_SETS = [
+  {
+    name: "jsdelivr",
+    module: "https://cdn.jsdelivr.net/npm/@google/model-viewer@3.5.0/dist/model-viewer.min.js"
+  },
+  {
+    name: "unpkg",
+    module: "https://unpkg.com/@google/model-viewer@3.5.0/dist/model-viewer.min.js"
   }
 ];
 
@@ -25,53 +38,46 @@ function loadScript(url) {
   });
 }
 
-async function ensureThreeDeps() {
+function loadModuleScript(url) {
+  return new Promise((resolve, reject) => {
+    const s = document.createElement("script");
+    s.type = "module";
+    s.src = url;
+    s.onload = () => resolve();
+    s.onerror = () => reject(new Error(`模块脚本加载失败：${url}`));
+    document.head.appendChild(s);
+  });
+}
+
+async function ensureThree() {
+  if (globalThis.THREE) return;
   const errors = [];
-
-  if (!globalThis.THREE) {
-    for (const set of CDN_SETS) {
-      try {
-        await loadScript(set.three);
-        if (globalThis.THREE) break;
-      } catch (e) {
-        errors.push(String(e?.message || e));
-      }
+  for (const set of THREE_CDN_SETS) {
+    try {
+      await loadScript(set.three);
+      if (globalThis.THREE) return;
+    } catch (e) {
+      errors.push(`[${set.name}] ${String(e?.message || e)}`);
     }
   }
+  throw new Error(`three.js 未加载。\n${errors.join("\n")}`);
+}
 
-  if (!globalThis.THREE) {
-    throw new Error(`three.js 未加载。${errors.length ? `\n${errors.join("\n")}` : ""}`);
-  }
+async function ensureModelViewer() {
+  const mv = $("mv");
+  if (!mv) throw new Error("页面缺少 <model-viewer> 容器");
+  if (customElements.get("model-viewer")) return;
 
-  if (!globalThis.THREE.OrbitControls) {
-    for (const set of CDN_SETS) {
-      try {
-        await loadScript(set.orbit);
-        if (globalThis.THREE.OrbitControls) break;
-      } catch (e) {
-        errors.push(String(e?.message || e));
-      }
+  const errors = [];
+  for (const set of MODEL_VIEWER_CDN_SETS) {
+    try {
+      await loadModuleScript(set.module);
+      if (customElements.get("model-viewer")) return;
+    } catch (e) {
+      errors.push(`[${set.name}] ${String(e?.message || e)}`);
     }
   }
-
-  if (!globalThis.THREE.OrbitControls) {
-    throw new Error(`OrbitControls 未加载。${errors.length ? `\n${errors.join("\n")}` : ""}`);
-  }
-
-  if (!globalThis.THREE.STLLoader) {
-    for (const set of CDN_SETS) {
-      try {
-        await loadScript(set.stl);
-        if (globalThis.THREE.STLLoader) break;
-      } catch (e) {
-        errors.push(String(e?.message || e));
-      }
-    }
-  }
-
-  if (!globalThis.THREE.STLLoader) {
-    throw new Error(`STLLoader 未加载。${errors.length ? `\n${errors.join("\n")}` : ""}`);
-  }
+  throw new Error(`model-viewer 未加载。\n${errors.join("\n")}`);
 }
 
 
@@ -80,11 +86,14 @@ const listEl = $("list");
 const qEl = $("q");
 const fileEl = $("file");
 const nameEl = $("modelName");
+const nameEl = $("modelName");
 const metaEl = $("modelMeta");
 const downloadEl = $("download");
 const repoLinkEl = $("repoLink");
 const submitLinkEl = $("submitLink");
 const hintEl = $("hint");
+const modelViewerEl = $("mv");
+const canvasEl = $("c");
 
 const state = {
   models: [],
@@ -104,15 +113,172 @@ function setFatalHint(text) {
     hintEl.style.color = "rgba(255, 220, 220, 0.95)";
   }
 }
+
+function createSimpleOrbitControls(THREE, camera, domElement) {
+  const target = new THREE.Vector3(0, 0, 0);
+
+  let enabled = true;
+  let enableDamping = true;
+  let dampingFactor = 0.08;
+  let rotateSpeed = 1.0;
+  let zoomSpeed = 1.0;
+  let panSpeed = 1.0;
+
+  const spherical = new THREE.Spherical();
+  const sphericalDelta = new THREE.Spherical(0, 0, 0);
+  const panOffset = new THREE.Vector3();
+
+  const pointerStart = new THREE.Vector2();
+  const pointerNow = new THREE.Vector2();
+  let isRotating = false;
+  let isPanning = false;
+
+  function updateSphericalFromCamera() {
+    const offset = camera.position.clone().sub(target);
+    spherical.setFromVector3(offset);
+  }
+
+  function rotateLeft(angle) {
+    sphericalDelta.theta -= angle;
+  }
+
+  function rotateUp(angle) {
+    sphericalDelta.phi -= angle;
+  }
+
+  function pan(deltaX, deltaY) {
+    const element = domElement;
+    if (!element) return;
+
+    const offset = camera.position.clone().sub(target);
+    const targetDistance = offset.length() * Math.tan((camera.fov / 2) * Math.PI / 180);
+
+    const panX = (2 * deltaX * targetDistance / element.clientHeight) * panSpeed;
+    const panY = (2 * deltaY * targetDistance / element.clientHeight) * panSpeed;
+
+    const te = camera.matrix.elements;
+    const xAxis = new THREE.Vector3(te[0], te[1], te[2]);
+    const yAxis = new THREE.Vector3(te[4], te[5], te[6]);
+
+    panOffset.addScaledVector(xAxis, -panX);
+    panOffset.addScaledVector(yAxis, panY);
+  }
+
+  function dolly(scale) {
+    spherical.radius = Math.max(0.01, spherical.radius * scale);
+  }
+
+  function onPointerDown(e) {
+    if (!enabled) return;
+    if (!domElement) return;
+
+    domElement.setPointerCapture(e.pointerId);
+    pointerStart.set(e.clientX, e.clientY);
+    isRotating = e.button === 0;
+    isPanning = e.button === 2;
+  }
+
+  function onPointerMove(e) {
+    if (!enabled) return;
+    if (!isRotating && !isPanning) return;
+
+    pointerNow.set(e.clientX, e.clientY);
+    const dx = pointerNow.x - pointerStart.x;
+    const dy = pointerNow.y - pointerStart.y;
+    pointerStart.copy(pointerNow);
+
+    if (isRotating) {
+      const element = domElement;
+      const rotX = (2 * Math.PI * dx / Math.max(1, element.clientWidth)) * rotateSpeed;
+      const rotY = (2 * Math.PI * dy / Math.max(1, element.clientHeight)) * rotateSpeed;
+      rotateLeft(rotX);
+      rotateUp(rotY);
+    } else if (isPanning) {
+      pan(dx, dy);
+    }
+  }
+
+  function onPointerUp(e) {
+    if (!enabled) return;
+    isRotating = false;
+    isPanning = false;
+    try {
+      domElement.releasePointerCapture(e.pointerId);
+    } catch {}
+  }
+
+  function onWheel(e) {
+    if (!enabled) return;
+    e.preventDefault();
+    const delta = e.deltaY;
+    const scale = delta > 0 ? (1 + 0.1 * zoomSpeed) : (1 / (1 + 0.1 * zoomSpeed));
+    dolly(scale);
+  }
+
+  domElement.addEventListener("contextmenu", (e) => e.preventDefault());
+  domElement.addEventListener("pointerdown", onPointerDown);
+  domElement.addEventListener("pointermove", onPointerMove);
+  domElement.addEventListener("pointerup", onPointerUp);
+  domElement.addEventListener("pointercancel", onPointerUp);
+  domElement.addEventListener("wheel", onWheel, { passive: false });
+
+  updateSphericalFromCamera();
+
+  function update() {
+    updateSphericalFromCamera();
+
+    spherical.theta += sphericalDelta.theta;
+    spherical.phi += sphericalDelta.phi;
+    spherical.phi = Math.max(0.01, Math.min(Math.PI - 0.01, spherical.phi));
+
+    target.add(panOffset);
+
+    const offset = new THREE.Vector3().setFromSpherical(spherical);
+    camera.position.copy(target).add(offset);
+    camera.lookAt(target);
+    camera.updateMatrix();
+    camera.updateMatrixWorld();
+
+    if (enableDamping) {
+      sphericalDelta.theta *= (1 - dampingFactor);
+      sphericalDelta.phi *= (1 - dampingFactor);
+      panOffset.multiplyScalar(1 - dampingFactor);
+    } else {
+      sphericalDelta.theta = 0;
+      sphericalDelta.phi = 0;
+      panOffset.set(0, 0, 0);
+    }
+  }
+
+  return {
+    get enabled() { return enabled; },
+    set enabled(v) { enabled = Boolean(v); },
+    get target() { return target; },
+    set target(v) { target.copy(v); },
+    get enableDamping() { return enableDamping; },
+    set enableDamping(v) { enableDamping = Boolean(v); },
+    get dampingFactor() { return dampingFactor; },
+    set dampingFactor(v) { dampingFactor = Number(v) || 0; },
+    update,
+    dispose() {
+      domElement.removeEventListener("pointerdown", onPointerDown);
+      domElement.removeEventListener("pointermove", onPointerMove);
+      domElement.removeEventListener("pointerup", onPointerUp);
+      domElement.removeEventListener("pointercancel", onPointerUp);
+      domElement.removeEventListener("wheel", onWheel);
+    }
+  };
+}
 let renderer = null;
 let scene = null;
 let camera = null;
 let controls = null;
 let threeReady = false;
+let currentObjectUrl = null;
 
 try {
   setHint("正在加载 3D 预览引擎…");
-  await ensureThreeDeps();
+  await ensureThree();
   const THREE = globalThis.THREE;
 
   renderer = new THREE.WebGLRenderer({ canvas: $("c"), antialias: true, alpha: true });
@@ -124,7 +290,7 @@ try {
   camera = new THREE.PerspectiveCamera(45, 1, 0.01, 200);
   camera.position.set(6, 4, 8);
 
-  controls = new THREE.OrbitControls(camera, renderer.domElement);
+  controls = createSimpleOrbitControls(THREE, camera, renderer.domElement);
   controls.enableDamping = true;
   controls.dampingFactor = 0.08;
   controls.target.set(0, 0, 0);
@@ -146,6 +312,26 @@ try {
 }
 
 let currentMesh = null;
+
+function showCanvasViewer() {
+  if (modelViewerEl) modelViewerEl.style.display = "none";
+  if (canvasEl) canvasEl.style.display = "block";
+}
+
+function showModelViewer() {
+  if (canvasEl) canvasEl.style.display = "none";
+  if (modelViewerEl) modelViewerEl.style.display = "block";
+}
+
+function clearModelViewer() {
+  if (!modelViewerEl) return;
+  if (currentObjectUrl) {
+    try { URL.revokeObjectURL(currentObjectUrl); } catch {}
+    currentObjectUrl = null;
+  }
+  modelViewerEl.removeAttribute("src");
+  modelViewerEl.removeAttribute("poster");
+}
 
 function inferGithubRepoUrls() {
   const host = String(window.location.hostname || "");
@@ -209,7 +395,7 @@ function setDownload(url, enabled) {
 
 function setSelectedMeta(model) {
   if (!model) {
-    nameEl.textContent = "选择一个模型或上传 STL 文件";
+    nameEl.textContent = "选择一个模型或上传模型文件";
     metaEl.textContent = "";
     setDownload("", false);
     return;
@@ -232,6 +418,11 @@ function clearMesh() {
   currentMesh = null;
 }
 
+function clearAllViewers() {
+  clearModelViewer();
+  if (threeReady) clearMesh();
+}
+
 function frameObject(obj) {
   if (!threeReady || !controls || !camera) return;
   const box = new THREE.Box3().setFromObject(obj);
@@ -252,56 +443,53 @@ function frameObject(obj) {
 
 async function loadStlFromUrl(url) {
   if (!threeReady || !scene) throw new Error("3D 预览引擎未就绪");
-  const loader = new globalThis.THREE.STLLoader();
-  clearMesh();
+  clearAllViewers();
+  showCanvasViewer();
 
-  return new Promise((resolve, reject) => {
-    loader.load(
-      url,
-      (geometry) => {
-        geometry.computeVertexNormals();
-        const material = new THREE.MeshStandardMaterial({
-          color: 0xd9f3f3,
-          metalness: 0.05,
-          roughness: 0.65
-        });
-        const mesh = new THREE.Mesh(geometry, material);
-        mesh.rotation.x = -Math.PI / 2;
-        currentMesh = mesh;
-        scene.add(mesh);
-        frameObject(mesh);
-        resolve();
-      },
-      undefined,
-      (err) => reject(err)
-    );
-  });
+  const res = await fetch(url, { cache: "no-store" });
+  if (!res.ok) {
+    throw new Error(`下载模型失败：${res.status} ${res.statusText}`);
+  }
+  const buffer = await res.arrayBuffer();
+  const geometry = parseStlToGeometry(globalThis.THREE, buffer);
+  const mesh = createMeshFromGeometry(globalThis.THREE, geometry);
+  currentMesh = mesh;
+  scene.add(mesh);
+  frameObject(mesh);
 }
 
 async function loadStlFromFile(file) {
   if (!threeReady || !scene) throw new Error("3D 预览引擎未就绪");
-  const loader = new globalThis.THREE.STLLoader();
-  clearMesh();
+  clearAllViewers();
+  showCanvasViewer();
 
   const buffer = await readFileAsArrayBuffer(file);
-  let geometry;
-  try {
-    geometry = loader.parse(buffer);
-  } catch (e) {
-    const text = new TextDecoder("utf-8").decode(new Uint8Array(buffer));
-    geometry = loader.parse(text);
-  }
-  geometry.computeVertexNormals();
-  const material = new THREE.MeshStandardMaterial({
-    color: 0xd9f3f3,
-    metalness: 0.05,
-    roughness: 0.65
-  });
-  const mesh = new THREE.Mesh(geometry, material);
-  mesh.rotation.x = -Math.PI / 2;
+  const geometry = parseStlToGeometry(globalThis.THREE, buffer);
+  const mesh = createMeshFromGeometry(globalThis.THREE, geometry);
   currentMesh = mesh;
   scene.add(mesh);
   frameObject(mesh);
+}
+
+async function loadGlbFromUrl(url) {
+  clearAllViewers();
+  await ensureModelViewer();
+  showModelViewer();
+  modelViewerEl.src = url;
+  modelViewerEl.setAttribute("camera-controls", "");
+  modelViewerEl.setAttribute("interaction-prompt", "none");
+  setHint("拖动旋转，滚轮缩放，双指缩放");
+}
+
+async function loadGlbFromFile(file) {
+  clearAllViewers();
+  await ensureModelViewer();
+  showModelViewer();
+  currentObjectUrl = URL.createObjectURL(file);
+  modelViewerEl.src = currentObjectUrl;
+  modelViewerEl.setAttribute("camera-controls", "");
+  modelViewerEl.setAttribute("interaction-prompt", "none");
+  setHint("拖动旋转，滚轮缩放，双指缩放");
 }
 
 function readFileAsArrayBuffer(file) {
@@ -314,6 +502,83 @@ function readFileAsArrayBuffer(file) {
     reader.onload = () => resolve(reader.result);
     reader.readAsArrayBuffer(file);
   });
+}
+
+function createMeshFromGeometry(THREE, geometry) {
+  geometry.computeVertexNormals();
+  const material = new THREE.MeshStandardMaterial({
+    color: 0xd9f3f3,
+    metalness: 0.05,
+    roughness: 0.65
+  });
+  const mesh = new THREE.Mesh(geometry, material);
+  mesh.rotation.x = -Math.PI / 2;
+  return mesh;
+}
+
+function parseStlToGeometry(THREE, buffer) {
+  const byteLength = buffer.byteLength || 0;
+  if (byteLength < 84) {
+    const text = new TextDecoder("utf-8").decode(new Uint8Array(buffer));
+    return parseAsciiStlToGeometry(THREE, text);
+  }
+
+  const dv = new DataView(buffer);
+  const triCount = dv.getUint32(80, true);
+  const expected = 84 + triCount * 50;
+  const isBinary = expected === byteLength;
+
+  if (isBinary) return parseBinaryStlToGeometry(THREE, dv, triCount);
+
+  const text = new TextDecoder("utf-8").decode(new Uint8Array(buffer));
+  return parseAsciiStlToGeometry(THREE, text);
+}
+
+function parseBinaryStlToGeometry(THREE, dv, triCount) {
+  const positions = new Float32Array(triCount * 9);
+  let offset = 84;
+  let pi = 0;
+
+  for (let i = 0; i < triCount; i++) {
+    offset += 12;
+    for (let v = 0; v < 3; v++) {
+      const x = dv.getFloat32(offset, true); offset += 4;
+      const y = dv.getFloat32(offset, true); offset += 4;
+      const z = dv.getFloat32(offset, true); offset += 4;
+      positions[pi++] = x;
+      positions[pi++] = y;
+      positions[pi++] = z;
+    }
+    offset += 2;
+  }
+
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+  return geometry;
+}
+
+function parseAsciiStlToGeometry(THREE, text) {
+  const vertexRe = /vertex\s+([+\-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+\-]?\d+)?)\s+([+\-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+\-]?\d+)?)\s+([+\-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+\-]?\d+)?)/g;
+  const verts = [];
+  let m;
+  while ((m = vertexRe.exec(text)) !== null) {
+    verts.push(parseFloat(m[1]), parseFloat(m[2]), parseFloat(m[3]));
+  }
+  if (verts.length < 9) {
+    throw new Error("STL 解析失败：未找到有效顶点数据");
+  }
+  const positions = new Float32Array(verts);
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+  return geometry;
+}
+
+function inferFormat(model) {
+  const fmt = String(model?.format || "").toLowerCase().trim();
+  if (fmt) return fmt;
+  const url = String(model?.url || "");
+  const m = url.toLowerCase().match(/\.([a-z0-9]+)(?:\?|#|$)/);
+  return m ? m[1] : "";
 }
 
 function renderList() {
@@ -350,10 +615,15 @@ function renderList() {
       renderList();
       setSelectedMeta(m);
       try {
-        if (!threeReady) throw new Error("3D 预览引擎未就绪（依赖加载失败）");
-        await loadStlFromUrl(m.url);
+        const fmt = inferFormat(m);
+        if (fmt === "glb" || fmt === "gltf") {
+          await loadGlbFromUrl(m.url);
+        } else {
+          if (!threeReady) throw new Error("3D 预览引擎未就绪（依赖加载失败）");
+          await loadStlFromUrl(m.url);
+        }
       } catch (e) {
-        clearMesh();
+        clearAllViewers();
         nameEl.textContent = "加载失败";
         metaEl.textContent = String(e?.message || e);
         setDownload("", false);
@@ -379,7 +649,7 @@ async function bootstrap() {
           url: m.url,
           format: (m.format || "stl").toLowerCase()
         }))
-        .filter((m) => m.url && m.format === "stl")
+        .filter((m) => m.url && ["stl", "glb", "gltf"].includes(m.format))
     : [];
 
   setSelectedMeta(null);
@@ -410,24 +680,33 @@ fileEl.addEventListener("change", async (e) => {
   e.target.value = "";
   state.activeId = null;
   renderList();
+  const lower = String(file.name || "").toLowerCase();
+  const ext = (lower.match(/\.([a-z0-9]+)$/) || [])[1] || "";
   setSelectedMeta({
     name: file.name,
     author: "本地文件",
     date: "",
     url: "",
-    format: "stl"
+    format: ext || "file"
   });
   try {
-    if (!threeReady) throw new Error("3D 预览引擎未就绪（依赖加载失败）");
     nameEl.textContent = "正在加载本地模型…";
     metaEl.textContent = `大小：${Math.round((file.size / 1024 / 1024) * 10) / 10}MB`;
     setDownload("", false);
+    if (ext === "glb" || ext === "gltf") {
+      await loadGlbFromFile(file);
+      nameEl.textContent = file.name;
+      metaEl.textContent = "来源：本地文件";
+      setDownload("", false);
+      return;
+    }
+    if (!threeReady) throw new Error("3D 预览引擎未就绪（依赖加载失败）");
     await loadStlFromFile(file);
     nameEl.textContent = file.name;
     metaEl.textContent = "来源：本地文件";
     setDownload("", false);
   } catch (err) {
-    clearMesh();
+    clearAllViewers();
     nameEl.textContent = "加载失败";
     metaEl.textContent = String(err?.message || err);
     setDownload("", false);
