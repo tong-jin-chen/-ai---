@@ -1,5 +1,14 @@
 {
   "repoUrl": "https://github.com/tong-jin-chen/-ai---",
   "submitUrl": "https://github.com/tong-jin-chen/-ai---/issues/new",
-  "models": []
+  "models": [
+    {
+      "id": "demo1",
+      "name": "人物头像",
+      "author": "zhy",
+      "date": "2026-05-20",
+      "format": "glb",
+      "url": "./models/white_mesh.glb"
+    }
+  ]
 }
