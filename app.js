@@ -634,8 +634,41 @@ function renderList() {
 }
 
 async function bootstrap() {
-  const res = await fetch("./models.json", { cache: "no-store" });
-  const data = await res.json();
+  const candidates = [
+    "./models.json",
+    "../models.json"
+  ];
+
+  const errors = [];
+  let data = null;
+
+  for (const p of candidates) {
+    try {
+      const url = new URL(p, window.location.href).toString();
+      const res = await fetch(url, { cache: "no-store" });
+      if (!res.ok) {
+        errors.push(`${url} -> HTTP ${res.status}`);
+        continue;
+      }
+      data = await res.json();
+      break;
+    } catch (e) {
+      errors.push(`${p} -> ${String(e?.message || e)}`);
+    }
+  }
+
+  if (!data) {
+    state.models = [];
+    setSelectedMeta(null);
+    renderList();
+    setFatalHint(
+      "未能读取 models.json。\n" +
+        "请把 models.json 放在网站页面同目录（或上一级目录）。\n" +
+        "尝试过：\n" +
+        errors.map((x) => `- ${x}`).join("\n")
+    );
+    return;
+  }
 
   setHeaderLinks(data);
 
@@ -715,7 +748,14 @@ fileEl.addEventListener("change", async (e) => {
 
 window.addEventListener("resize", resize);
 
-await bootstrap();
+try {
+  await bootstrap();
+} catch (e) {
+  state.models = [];
+  setSelectedMeta(null);
+  renderList();
+  setFatalHint(`页面初始化失败：${String(e?.message || e)}`);
+}
 resize();
 if (threeReady) tick();
 })();
