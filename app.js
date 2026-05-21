@@ -86,7 +86,6 @@ const listEl = $("list");
 const qEl = $("q");
 const fileEl = $("file");
 const nameEl = $("modelName");
-const nameEl = $("modelName");
 const metaEl = $("modelMeta");
 const downloadEl = $("download");
 const repoLinkEl = $("repoLink");
@@ -634,13 +633,26 @@ function renderList() {
 }
 
 async function bootstrap() {
+  function getGithubPagesRepoRootPath() {
+    const host = String(window.location.hostname || "");
+    if (!host.endsWith("github.io")) return null;
+    const parts = String(window.location.pathname || "").split("/").filter(Boolean);
+    if (parts.length === 0) return null;
+    return `/${parts[0]}/`;
+  }
+
+  const repoRoot = getGithubPagesRepoRootPath();
   const candidates = [
     "./models.json",
-    "../models.json"
-  ];
+    "../models.json",
+    repoRoot ? `${repoRoot}models.json` : null,
+    repoRoot ? `${repoRoot}gitttt/models.json` : null,
+    "/models.json"
+  ].filter(Boolean);
 
   const errors = [];
   let data = null;
+  let dataUrl = null;
 
   for (const p of candidates) {
     try {
@@ -651,6 +663,7 @@ async function bootstrap() {
         continue;
       }
       data = await res.json();
+      dataUrl = url;
       break;
     } catch (e) {
       errors.push(`${p} -> ${String(e?.message || e)}`);
@@ -672,6 +685,19 @@ async function bootstrap() {
 
   setHeaderLinks(data);
 
+  const resolveModelUrl = (rawUrl) => {
+    const u = String(rawUrl || "").trim();
+    if (!u) return "";
+    if (u.startsWith("http://") || u.startsWith("https://")) return u;
+    if (u.startsWith("blob:") || u.startsWith("data:")) return u;
+    if (!dataUrl) return u;
+    try {
+      return new URL(u, dataUrl).toString();
+    } catch {
+      return u;
+    }
+  };
+
   state.models = Array.isArray(data.models)
     ? data.models
         .map((m, idx) => ({
@@ -679,7 +705,7 @@ async function bootstrap() {
           name: m.name,
           author: m.author,
           date: m.date,
-          url: m.url,
+          url: resolveModelUrl(m.url),
           format: (m.format || "stl").toLowerCase()
         }))
         .filter((m) => m.url && ["stl", "glb", "gltf"].includes(m.format))
