@@ -6,7 +6,7 @@
       "id": "demo1",
       "name": "人物头像",
       "author": "zhy",
-      "date": "2026-05-20",
+      "date": "2026-05-02",
       "format": "glb",
       "url": "./models/white_mesh.glb"
     },
@@ -14,7 +14,7 @@
       "id": "demo2",
       "name": "魔法屋",
       "author": "zhy",
-      "date": "2026-05-20",
+      "date": "2026-05-02",
       "format": "glb",
       "url": "./models/house.glb"
     },
@@ -22,7 +22,7 @@
       "id": "demo3",
       "name": "路飞",
       "author": "zhy",
-      "date": "2026-05-20",
+      "date": "2026-05-02",
       "format": "glb",
       "url": "./models/haizei.glb"
     },
@@ -30,9 +30,17 @@
       "id": "demo4",
       "name": "雕塑",
       "author": "zhy",
-      "date": "2026-05-20",
+      "date": "2026-05-02",
       "format": "glb",
       "url": "./models/people1.glb"
+    },
+    {
+      "id": "demo5",
+      "name": "龙",
+      "author": "zhy",
+      "date": "2026-05-02",
+      "format": "glb",
+      "url": "./models/dragon.glb"
     }
   ]
 }
