@@ -41,6 +41,14 @@
       "date": "2026-05-02",
       "format": "glb",
       "url": "./models/dragon.glb"
+    },
+    {
+      "id": "demo6",
+      "name": "鹰",
+      "author": "zhy",
+      "date": "2026-05-02",
+      "format": "glb",
+      "url": "./models/eagle.glb"
     }
   ]
 }
